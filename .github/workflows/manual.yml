@@ -1,0 +1,79 @@
+name: Build Kernel (QuicksilveR)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main  # Ganti kalau beda branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Kernel Source
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y bc bison flex libssl-dev make clang curl git python3
+
+    - name: Setup Neutron Clang
+      run: |
+        mkdir -p $HOME/toolchains/neutron-clang
+        cd $HOME/toolchains/neutron-clang
+        curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+        chmod +x antman
+        ./antman -S
+
+    - name: Clone AnyKernel3
+      run: |
+        git clone https://github.com/Atom-X-Devs/AnyKernel3 $HOME/AnyKernel3
+
+    - name: Download mkdtboimg.py
+      run: |
+        wget https://raw.githubusercontent.com/awakened1712/android_kernel_oneplus_sm8350/lineage-21/mkdtboimg.py
+
+    - name: Build Kernel
+      run: |
+        export KERNEL_DIR=$(pwd)
+        export GC_DIR=$HOME/toolchains/neutron-clang
+        export AK3_DIR=$HOME/AnyKernel3
+        export MKDTBO_FILE=$KERNEL_DIR/mkdtboimg.py
+
+        export KBUILD_BUILD_USER=amardikamahdi
+        export KBUILD_BUILD_HOST=lab
+        export PATH="$GC_DIR/bin:/usr/bin:$PATH"
+
+        mkdir -p out
+        make O=out ARCH=arm64 vendor/xiaomi-qgki_defconfig vendor/debugfs.config vendor/redwood-fragment.config
+        make -j$(nproc) O=out ARCH=arm64 LLVM=1 Image dtbs
+
+        if [ ! -f out/arch/arm64/boot/Image ]; then
+          echo "❌ Build failed!"
+          exit 1
+        fi
+
+    - name: Prepare AnyKernel3 zip
+      run: |
+        export KERNEL_DIR=$(pwd)
+        export AK3_DIR=$HOME/AnyKernel3
+
+        cd $AK3_DIR
+        git clean -fdx
+        cp $KERNEL_DIR/out/arch/arm64/boot/Image $AK3_DIR/
+        find $KERNEL_DIR/out/arch/arm64/boot/dts/vendor -name '*.dtb' -exec cat {} + > $AK3_DIR/dtb
+        python3 $KERNEL_DIR/mkdtboimg.py create $AK3_DIR/dtbo.img $KERNEL_DIR/out/arch/arm64/boot/dts/vendor/qcom/*.dtbo
+
+        zip -r9 Quicksilver-Kernel.zip * -x .git README.md
+
+    - name: Upload Kernel Zip
+      uses: actions/upload-artifact@v4
+      with:
+        name: Quicksilver-Kernel
+        path: |
+          $HOME/AnyKernel3/Quicksilver-Kernel.zip
+          $HOME/AnyKernel3/dtbo.img
+          $HOME/AnyKernel3/dtb
+          out/arch/arm64/boot/Image
