@@ -1,0 +1,78 @@
+name: Build Kernel
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git wget curl \
+            python3 python3-pip \
+            gcc g++ make \
+            flex bison \
+            libssl-dev
+
+      - name: Setup Neutron Clang
+        run: |
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+
+      - name: Clone AnyKernel3 if not exist
+        run: |
+          if [ ! -d "$HOME/AnyKernel3" ]; then
+            git clone https://github.com/Atom-X-Devs/AnyKernel3 "$HOME/AnyKernel3"
+          fi
+
+      - name: Download mkdtboimg.py if missing
+        run: |
+          if [ ! -f "mkdtboimg.py" ]; then
+            wget https://raw.githubusercontent.com/awakened1712/android_kernel_oneplus_sm8350/lineage-21/mkdtboimg.py
+          fi
+
+      - name: Build Kernel
+        run: |
+          export PATH="$HOME/toolchains/neutron-clang/bin:/usr/bin:$PATH"
+          export KBUILD_BUILD_USER=amardikamahdi
+          export KBUILD_BUILD_HOST=lab
+
+          mkdir -p out
+          make O=out ARCH=arm64 vendor/xiaomi-qgki_defconfig vendor/debugfs.config vendor/redwood-fragment.config
+          make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 Image dtbs
+
+      - name: Package with AnyKernel3
+        run: |
+          AK3_DIR="$HOME/AnyKernel3"
+          KERNEL_DIR="$(pwd)"
+
+          if [ -f "out/arch/arm64/boot/Image" ]; then
+            echo "Kernel compiled succesfully! Zipping up..."
+          fi
+
+          cd $AK3_DIR
+          make clean
+          cp $KERNEL_DIR/out/arch/arm64/boot/Image $AK3_DIR
+          find $KERNEL_DIR/out/arch/arm64/boot/dts/vendor -name '*.dtb' -exec cat {} + > $AK3_DIR/dtb
+          python3 $KERNEL_DIR/mkdtboimg.py create $AK3_DIR/dtbo.img $KERNEL_DIR/out/arch/arm64/boot/dts/vendor/qcom/*.dtbo
+          make
+
+      - name: Upload AnyKernel3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Zip
+          path: $HOME/AnyKernel3/*.zip
