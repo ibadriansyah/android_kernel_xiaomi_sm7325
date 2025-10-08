@@ -22,7 +22,7 @@ export PATH="${GC_DIR}/bin:/usr/bin:${PATH}"
 
 if ! [ -d "$AK3_DIR" ]; then
 echo "Anykernel 3 not found! Cloning to $AK3_DIR..."
-if ! git clone https://github.com/Ibadriansyah/AnyKernel3 $AK3_DIR; then
+if ! git clone https://github.com/ibadriansyah/AnyKernel3 $AK3_DIR; then
 echo "Cloning failed! Aborting..."
 exit 1
 fi
@@ -36,7 +36,7 @@ exit 1
 fi
 fi
 
-export KBUILD_BUILD_USER=dabskutz-margaskutz
+export KBUILD_BUILD_USER=dabskutz
 export KBUILD_BUILD_HOST=lab
 
 if [[ $1 = "-c" || $1 = "--clean" ]]; then
